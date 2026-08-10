@@ -1,0 +1,8 @@
+{
+  "functional_spec": "",
+  "technical_spec": "",
+  "api_impacts": [],
+  "affected_services": [],
+  "speckit_md": "# Verify OTP for Account Activation\n\n| | |\n|---|---|\n| **ID** | US-006 |\n| **Feature** | F-01 \u2014 User Registration |\n| **Epic** | EP-002 \u2014 Account Activation via OTP |\n| **Status** | Draft |\n| **Date** | 2026-08-10 |\n\n## Background\n\nPart of feature *User Registration*.\n\n## Acceptance Criteria\n\n### Story\n\n- [ ] Given a user has received an OTP, When the user enters the valid OTP within 5 minutes, Then the account is activated and the attempt is logged.\n- [ ] Given a user enters an expired OTP, When the system verifies it, Then the OTP is rejected and the user is informed of the expiration.\n\n### Epic\n\n- [ ] Given a user registers, when an OTP is generated, then it should be sent to the user\u2019s registered email.\n- [ ] Given a user receives an OTP, when it is entered in the verification page within 5 minutes, then the account should be activated.\n- [ ] Given a user enters an expired OTP, then the account should not be activated.\n\n## Proposed Solution\n\n### Functional Specification\n\n_Not specified._\n\n### Technical Design\n\n_Not specified._\n\n## Affected Services\n\n_None identified._\n\n## API Changes\n\n_No API changes identified._\n\n## Open Questions / Gaps\n\n_No gaps identified._",
+  "openspec_yaml": ""
+}
