@@ -1,20 +1,8 @@
 package com.usermanagement.domain.port.in;
 
-/**
- * Inbound port — authenticate a user and return a JWT.
- */
+import com.usermanagement.application.dto.AuthRequest;
+import com.usermanagement.application.dto.AuthResponse;
+
 public interface AuthenticateUserUseCase {
-
-    /**
-     * Authenticate a user with email and password.
-     *
-     * @param command the authentication command
-     * @return a signed JWT access token
-     */
-    String authenticate(AuthenticateUserCommand command);
-
-    record AuthenticateUserCommand(
-            String email,
-            String password
-    ) {}
+    AuthResponse authenticate(AuthRequest request);
 }

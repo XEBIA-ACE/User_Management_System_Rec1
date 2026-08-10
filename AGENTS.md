@@ -4,23 +4,24 @@
 
 | Technology | Role |
 |---|---|
-| **Java 21** | Primary language (use virtual threads where applicable) |
+| **Java 21** | Primary language (use virtual threads via Project Loom where applicable) |
 | **Spring Boot 3.x** | Application framework, auto-configuration, embedded Tomcat |
-| **Spring Security 6.x** | Authentication filter chain, password encoding, method-level security |
-| **Spring Data JPA / Hibernate** | ORM layer, repository abstraction over PostgreSQL |
-| **Spring Data Redis** | OTP storage, token blacklisting, session caching |
-| **Spring AMQP (RabbitMQ)** | Async event publishing (registration events, OTP dispatch) |
-| **PostgreSQL 16** | Primary relational data store |
-| **Redis 7** | Ephemeral key-value store for OTPs and JWT denylist |
+| **Spring Security 6.x** | Authentication filter chain, JWT validation, method-level security |
+| **Spring Data JPA / Hibernate** | ORM layer, repository abstractions over PostgreSQL |
+| **Spring Data Redis** | OTP storage, session caching, rate-limit counters |
+| **Spring AMQP (RabbitMQ)** | Async event publishing (user-registered, account-deleted events) |
+| **PostgreSQL 16** | Primary relational datastore |
+| **Redis 7** | Ephemeral OTP store with TTL, distributed cache |
+| **RabbitMQ 3.13** | Message broker for domain events |
 | **Flyway** | Database schema versioning and migrations |
-| **JJWT (io.jsonwebtoken)** | JWT creation, signing, and validation |
+| **JJWT (io.jsonwebtoken)** | JWT creation, signing (RS256), and validation |
 | **MapStruct** | Compile-time DTO ↔ entity mapping |
-| **Lombok** | Boilerplate reduction (getters, builders, constructors) |
+| **Lombok** | Boilerplate reduction (builders, getters, loggers) |
 | **SpringDoc OpenAPI 3** | Auto-generated API documentation |
 | **JUnit 5 + Mockito** | Unit and slice testing |
-| **Testcontainers** | Integration tests against real PostgreSQL, Redis, RabbitMQ |
-| **JaCoCo** | Code coverage enforcement |
-| **Docker / Docker Compose** | Local environment orchestration |
+| **Testcontainers** | Integration tests with real PostgreSQL, Redis, RabbitMQ containers |
+| **JaCoCo** | Code coverage enforcement (90% minimum) |
+| **Docker / Docker Compose** | Containerisation and local dev orchestration |
 | **GitHub Actions** | CI pipeline |
 
 ---
@@ -29,238 +30,231 @@
 
 ```
 user-management-service/
+├── AGENTS.md                          # This file
+├── tasks.md                           # Agent-generated task checklist (created before coding)
+├── README.md                          # Human-readable service overview
+├── pom.xml                            # Maven build descriptor
+├── .env.example                       # Environment variable template (never commit .env)
+├── .gitignore
+├── docker/
+│   ├── Dockerfile                     # Multi-stage production image
+│   └── docker-compose.yml             # Local dev stack (app + postgres + redis + rabbitmq)
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                        # GitHub Actions CI pipeline
-├── docker/
-│   ├── Dockerfile                        # Multi-stage production image
-│   └── docker-compose.yml               # Local dev stack (app + PG + Redis + RabbitMQ)
+│       └── ci.yml                     # GitHub Actions pipeline
 ├── src/
 │   ├── main/
-│   │   ├── java/com/company/usermgmt/
-│   │   │   ├── UserManagementApplication.java   # @SpringBootApplication entry point
-│   │   │   ├── config/
-│   │   │   │   ├── SecurityConfig.java           # SecurityFilterChain, CORS, CSRF, BCrypt bean
-│   │   │   │   ├── JwtConfig.java                # JWT secret, expiry properties binding
-│   │   │   │   ├── RedisConfig.java              # RedisTemplate, serializers
-│   │   │   │   ├── RabbitMQConfig.java           # Exchange, queue, binding declarations
-│   │   │   │   └── OpenApiConfig.java            # SpringDoc bearer-auth configuration
-│   │   │   ├── domain/
-│   │   │   │   ├── model/
-│   │   │   │   │   ├── User.java                 # @Entity: id, email, passwordHash, status, roles, timestamps
-│   │   │   │   │   ├── UserStatus.java           # Enum: PENDING, ACTIVE, DELETED
-│   │   │   │   │   └── Role.java                 # Enum: ROLE_USER, ROLE_ADMIN
-│   │   │   │   └── repository/
-│   │   │   │       └── UserRepository.java       # JpaRepository + custom finders
-│   │   │   ├── dto/
-│   │   │   │   ├── request/
-│   │   │   │   │   ├── RegisterRequest.java      # email, password, fullName (Bean Validation)
-│   │   │   │   │   ├── LoginRequest.java         # email, password
-│   │   │   │   │   ├── VerifyOtpRequest.java     # email, otp
-│   │   │   │   │   └── DeleteAccountRequest.java # password confirmation
-│   │   │   │   └── response/
-│   │   │   │       ├── AuthResponse.java         # accessToken, refreshToken, expiresIn
-│   │   │   │       └── UserResponse.java         # id, email, fullName, status
-│   │   │   ├── mapper/
-│   │   │   │   └── UserMapper.java               # MapStruct: User ↔ UserResponse
-│   │   │   ├── security/
-│   │   │   │   ├── JwtTokenProvider.java         # generate, validate, parse JWT; check denylist
-│   │   │   │   ├── JwtAuthenticationFilter.java  # OncePerRequestFilter extracting Bearer token
-│   │   │   │   └── UserDetailsServiceImpl.java   # Loads UserDetails from UserRepository
-│   │   │   ├── service/
-│   │   │   │   ├── UserService.java              # Interface defining all use-case contracts
-│   │   │   │   ├── impl/
-│   │   │   │   │   ├── UserServiceImpl.java      # Registration, deletion orchestration
-│   │   │   │   │   ├── AuthServiceImpl.java      # Login, token refresh, logout
-│   │   │   │   │   └── OtpServiceImpl.java       # OTP generation, Redis storage, verification
-│   │   │   │   └── event/
-│   │   │   │       ├── UserEventPublisher.java   # Publishes domain events to RabbitMQ
-│   │   │   │       └── UserRegisteredEvent.java  # Event payload POJO
-│   │   │   ├── controller/
-│   │   │   │   ├── AuthController.java           # POST /api/v1/auth/register, /login, /logout
-│   │   │   │   ├── OtpController.java            # POST /api/v1/auth/verify, /resend
-│   │   │   │   └── UserController.java           # GET /api/v1/users/me, DELETE /api/v1/users/me
-│   │   │   └── exception/
-│   │   │       ├── GlobalExceptionHandler.java   # @RestControllerAdvice, RFC 7807 ProblemDetail
-│   │   │       ├── UserAlreadyExistsException.java
-│   │   │       ├── InvalidOtpException.java
-│   │   │       ├── AccountNotVerifiedException.java
-│   │   │       └── UserNotFoundException.java
+│   │   ├── java/
+│   │   │   └── com/company/usermanagement/
+│   │   │       ├── UserManagementApplication.java   # @SpringBootApplication entry point
+│   │   │       ├── config/
+│   │   │       │   ├── SecurityConfig.java           # Filter chain, CORS, CSRF, endpoint rules
+│   │   │       │   ├── JwtConfig.java                # RSA key loading, JwtParser/JwtBuilder beans
+│   │   │       │   ├── RedisConfig.java              # RedisTemplate, key serialisers
+│   │   │       │   ├── RabbitMQConfig.java           # Exchange, queue, binding declarations
+│   │   │       │   └── OpenApiConfig.java            # SpringDoc metadata and security scheme
+│   │   │       ├── domain/
+│   │   │       │   ├── model/
+│   │   │       │   │   ├── User.java                 # @Entity — users table
+│   │   │       │   │   ├── UserStatus.java           # Enum: PENDING, ACTIVE, DELETED
+│   │   │       │   │   └── Role.java                 # Enum: USER, ADMIN
+│   │   │       │   └── event/
+│   │   │       │       ├── UserRegisteredEvent.java  # AMQP outbound event record
+│   │   │       │       └── UserDeletedEvent.java     # AMQP outbound event record
+│   │   │       ├── repository/
+│   │   │       │   └── UserRepository.java           # JpaRepository + custom queries
+│   │   │       ├── service/
+│   │   │       │   ├── UserRegistrationService.java  # Registration orchestration
+│   │   │       │   ├── AuthenticationService.java    # Login, JWT issuance
+│   │   │       │   ├── OtpService.java               # OTP generation, Redis storage, verification
+│   │   │       │   ├── AccountVerificationService.java # Ties OTP to user activation
+│   │   │       │   ├── AccountDeletionService.java   # Soft-delete + event publish
+│   │   │       │   └── JwtService.java               # Token build/parse/validate helpers
+│   │   │       ├── messaging/
+│   │   │       │   └── EventPublisher.java           # RabbitTemplate wrapper for domain events
+│   │   │       ├── web/
+│   │   │       │   ├── controller/
+│   │   │       │   │   ├── AuthController.java       # POST /auth/register, /auth/login, /auth/verify
+│   │   │       │   │   └── AccountController.java    # DELETE /accounts/{id}
+│   │   │       │   ├── dto/
+│   │   │       │   │   ├── request/
+│   │   │       │   │   │   ├── RegisterRequest.java
+│   │   │       │   │   │   ├── LoginRequest.java
+│   │   │       │   │   │   └── VerifyOtpRequest.java
+│   │   │       │   │   └── response/
+│   │   │       │   │       ├── AuthResponse.java
+│   │   │       │   │       ├── UserResponse.java
+│   │   │       │   │       └── ApiErrorResponse.java
+│   │   │       │   └── mapper/
+│   │   │       │       └── UserMapper.java           # MapStruct interface
+│   │   │       ├── security/
+│   │   │       │   ├── JwtAuthenticationFilter.java  # OncePerRequestFilter — extracts/validates JWT
+│   │   │       │   ├── UserDetailsServiceImpl.java   # Loads UserDetails from DB
+│   │   │       │   └── SecurityUser.java             # UserDetails wrapper
+│   │   │       └── exception/
+│   │   │           ├── GlobalExceptionHandler.java   # @RestControllerAdvice
+│   │   │           ├── UserAlreadyExistsException.java
+│   │   │           ├── InvalidOtpException.java
+│   │   │           ├── UserNotFoundException.java
+│   │   │           └── TokenValidationException.java
 │   │   └── resources/
-│   │       ├── application.yml                   # Base config (profiles, server port, logging)
-│   │       ├── application-local.yml             # Local overrides (datasource, redis, rabbit URLs)
-│   │       ├── application-test.yml              # Test profile (Testcontainers auto-config)
+│   │       ├── application.yml                       # Base configuration (references env vars)
+│   │       ├── application-local.yml                 # Local overrides
+│   │       ├── application-test.yml                  # Test-specific overrides
+│   │       ├── keys/
+│   │       │   ├── private.pem                       # RS256 private key (gitignored)
+│   │       │   └── public.pem                        # RS256 public key
 │   │       └── db/migration/
 │   │           ├── V1__create_users_table.sql
-│   │           └── V2__add_user_roles_index.sql
+│   │           └── V2__add_users_indexes.sql
 │   └── test/
-│       └── java/com/company/usermgmt/
-│           ├── unit/
-│           │   ├── service/
-│           │   │   ├── UserServiceImplTest.java
-│           │   │   ├── AuthServiceImplTest.java
-│           │   │   └── OtpServiceImplTest.java
-│           │   ├── security/
-│           │   │   └── JwtTokenProviderTest.java
-│           │   └── mapper/
-│           │       └── UserMapperTest.java
-│           ├── integration/
-│           │   ├── controller/
-│           │   │   ├── AuthControllerIT.java     # @SpringBootTest + Testcontainers
-│           │   │   ├── OtpControllerIT.java
-│           │   │   └── UserControllerIT.java
-│           │   └── repository/
-│           │       └── UserRepositoryIT.java     # @DataJpaTest + Testcontainers PG
-│           └── BaseIntegrationTest.java          # Shared Testcontainers lifecycle, MockMvc setup
-├── tasks.md                                      # Agent-generated task breakdown (see §3)
-├── pom.xml                                       # Maven build descriptor
-├── .env.example                                  # Template for local secrets
-├── .gitignore
-└── README.md
+│       └── java/
+│           └── com/company/usermanagement/
+│               ├── unit/
+│               │   ├── service/
+│               │   │   ├── UserRegistrationServiceTest.java
+│               │   │   ├── AuthenticationServiceTest.java
+│               │   │   ├── OtpServiceTest.java
+│               │   │   ├── AccountVerificationServiceTest.java
+│               │   │   ├── AccountDeletionServiceTest.java
+│               │   │   └── JwtServiceTest.java
+│               │   └── web/
+│               │       ├── AuthControllerTest.java   # @WebMvcTest slice
+│               │       └── AccountControllerTest.java
+│               ├── integration/
+│               │   ├── BaseIntegrationTest.java      # Testcontainers base class
+│               │   ├── UserRegistrationIT.java
+│               │   ├── AuthenticationIT.java
+│               │   ├── OtpVerificationIT.java
+│               │   └── AccountDeletionIT.java
+│               └── fixture/
+│                   └── UserFixture.java              # Shared test data builders
 ```
 
 ---
 
 ## 3. Required Workflow
 
-The agent **must** follow these steps in order. Do not skip or reorder them.
+The agent **must** follow these steps in order. Do not skip or reorder steps.
 
-### Step 1 — Read Specifications
-- Parse all story-level specification documents provided in context.
-- Identify every endpoint, business rule, data contract, error scenario, and non-functional requirement.
-- Note any ambiguities; surface them as `TODO` comments in `tasks.md`.
+### Step 1 — Read and Internalise Specifications
+- Read every story-level spec file provided in the repository before writing any code.
+- Identify all acceptance criteria, edge cases, and constraints.
+- Note all external system interactions (PostgreSQL, Redis, RabbitMQ).
 
 ### Step 2 — Create `tasks.md`
-Create `tasks.md` in the project root before writing any source code. Use this exact structure:
+- Create `tasks.md` in the repository root before writing any production code.
+- Break the work into atomic, checkable tasks grouped by layer (config → domain → repository → service → web → security → exception handling → tests → Docker → CI).
+- Use GitHub-flavoured Markdown checkboxes: `- [ ] Task description`.
+- Each task must map to a single class or migration file.
+- Example structure:
+  ```markdown
+  ## Tasks
+  ### Infrastructure & Config
+  - [ ] Create pom.xml with all required dependencies
+  - [ ] Configure application.yml with env-var placeholders
+  - [ ] Write V1__create_users_table.sql Flyway migration
+  ...
+  ### Domain
+  - [ ] Implement User entity
+  ...
+  ### Tests
+  - [ ] Write UserRegistrationServiceTest (unit)
+  ...
+  ```
 
-```markdown
-# tasks.md
+### Step 3 — Implement in Layer Order
+Implement in this strict sequence to avoid forward-dependency errors:
 
-## Status Legend
-- [ ] Not started  |  [~] In progress  |  [x] Done
+1. `pom.xml` and `application.yml` / `application-test.yml`
+2. Flyway migrations (`V1__`, `V2__`)
+3. Domain models and enums
+4. Repository interfaces
+5. Config classes (`SecurityConfig`, `JwtConfig`, `RedisConfig`, `RabbitMQConfig`)
+6. Security classes (`JwtService`, `JwtAuthenticationFilter`, `UserDetailsServiceImpl`)
+7. Service classes (registration → authentication → OTP → verification → deletion)
+8. Messaging (`EventPublisher`)
+9. MapStruct mappers
+10. DTOs (request and response records)
+11. Controllers
+12. Exception handler and custom exceptions
+13. `OpenApiConfig`
+14. Dockerfile and `docker-compose.yml`
+15. CI workflow (`ci.yml`)
 
-## Tasks
-### Infrastructure
-- [ ] TASK-001: Scaffold Maven project with all dependencies in pom.xml
-- [ ] TASK-002: Write docker-compose.yml (PostgreSQL, Redis, RabbitMQ)
-- [ ] TASK-003: Write Flyway migration V1 (users table)
-
-### Domain & Persistence
-- [ ] TASK-004: Implement User entity and UserStatus/Role enums
-- [ ] TASK-005: Implement UserRepository with custom finders
-
-### Security
-- [ ] TASK-006: Implement JwtTokenProvider (generate, validate, denylist check)
-- [ ] TASK-007: Implement JwtAuthenticationFilter
-- [ ] TASK-008: Configure SecurityFilterChain in SecurityConfig
-
-### Services
-- [ ] TASK-009: Implement UserServiceImpl (registration, deletion)
-- [ ] TASK-010: Implement AuthServiceImpl (login, logout, refresh)
-- [ ] TASK-011: Implement OtpServiceImpl (generate, store in Redis, verify)
-- [ ] TASK-012: Implement UserEventPublisher (RabbitMQ)
-
-### Controllers & DTOs
-- [ ] TASK-013: Implement DTOs with Bean Validation annotations
-- [ ] TASK-014: Implement AuthController, OtpController, UserController
-- [ ] TASK-015: Implement GlobalExceptionHandler (RFC 7807)
-
-### Testing
-- [ ] TASK-016: Write unit tests (target ≥ 90% coverage)
-- [ ] TASK-017: Write integration tests with Testcontainers
-- [ ] TASK-018: Verify JaCoCo report passes threshold gate
-
-### CI/CD
-- [ ] TASK-019: Write GitHub Actions ci.yml
-- [ ] TASK-020: Validate Docker multi-stage build succeeds
-```
-
-Update task status (`[~]` / `[x]`) as each task is completed.
-
-### Step 3 — Implement
-- Implement tasks in the order listed in `tasks.md`.
-- Mark each task `[~]` when started, `[x]` when complete.
-- Commit logically: one commit per completed task group (infrastructure → domain → security → services → controllers → tests → CI).
-- Never leave a compilation error before moving to the next task.
-
-### Step 4 — Test
-- Run `./mvnw test` after completing every service-layer task.
-- Run `./mvnw verify` (triggers integration tests + JaCoCo) before marking the testing tasks done.
-- Fix all failures before proceeding.
+### Step 4 — Write Tests Alongside Each Layer
+- Write the unit test for every service class immediately after implementing that class.
+- Write `@WebMvcTest` slice tests immediately after implementing each controller.
+- Write integration tests after all layers are complete.
+- Mark each `tasks.md` checkbox as complete (`- [x]`) after the test for that component passes.
 
 ### Step 5 — Validate
-- Confirm JaCoCo line coverage ≥ 90% (build must fail below threshold).
-- Confirm `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` starts without errors.
-- Confirm `docker compose -f docker/docker-compose.yml up --build` completes successfully.
-- Confirm SpringDoc UI is reachable at `http://localhost:8080/swagger-ui.html`.
+- Run `./mvnw verify` — all tests must pass.
+- Run `./mvnw jacoco:report` — confirm line coverage ≥ 90% for `src/main`.
+- Run `docker compose -f docker/docker-compose.yml up --build` — service must start healthy.
+- Confirm Flyway migrations run without errors on startup.
+- Confirm Swagger UI is reachable at `http://localhost:8080/swagger-ui.html`.
+- Check all `tasks.md` items are marked `- [x]` before declaring done.
 
 ---
 
 ## 4. Coding Conventions
 
+### General
+- Java 21; enable virtual threads: `spring.threads.virtual.enabled=true` in `application.yml`.
+- All classes are `final` unless designed for extension.
+- No field injection (`@Autowired` on fields). Use constructor injection exclusively. Lombok `@RequiredArgsConstructor` is acceptable.
+- Never suppress warnings without an inline comment explaining why.
+- All public API surface must have Javadoc.
+
 ### Naming
-| Artefact | Convention | Example |
+| Artifact | Convention | Example |
 |---|---|---|
-| Classes | `PascalCase` | `OtpServiceImpl` |
-| Methods / variables | `camelCase` | `generateOtp()` |
-| Constants | `UPPER_SNAKE_CASE` | `JWT_EXPIRY_MS` |
-| REST endpoints | `kebab-case` nouns, versioned | `/api/v1/auth/verify-otp` |
-| DB tables / columns | `snake_case` | `users`, `password_hash` |
-| Flyway scripts | `V{n}__{description}.sql` | `V1__create_users_table.sql` |
-| RabbitMQ exchange | `{service}.{entity}.exchange` | `usermgmt.user.exchange` |
-| RabbitMQ queue | `{service}.{event}.queue` | `usermgmt.user.registered.queue` |
-| Redis key | `{namespace}:{entity}:{id}` | `otp:user:user@example.com` |
+| Entity | `PascalCase`, no suffix | `User` |
+| Repository | `<Entity>Repository` | `UserRepository` |
+| Service | `<Concern>Service` | `OtpService` |
+| Controller | `<Resource>Controller` | `AuthController` |
+| DTO (request) | `<Action>Request` (Java record) | `RegisterRequest` |
+| DTO (response) | `<Resource>Response` (Java record) | `AuthResponse` |
+| Event | `<Entity><Action>Event` (Java record) | `UserRegisteredEvent` |
+| Mapper | `<Entity>Mapper` | `UserMapper` |
+| Exception | descriptive + `Exception` suffix | `InvalidOtpException` |
+| Migration | `V{n}__{snake_case_description}.sql` | `V1__create_users_table.sql` |
+| Constants | `UPPER_SNAKE_CASE` in a dedicated `*Constants` class | `OtpConstants.OTP_TTL_SECONDS` |
 
 ### Architecture Patterns
-- **Layered architecture**: Controller → Service Interface → Service Impl → Repository. Controllers must never call repositories directly.
-- **DTOs at the boundary**: Entities must never be returned from controllers. Always map through MapStruct.
-- **Dependency injection**: Constructor injection only — no `@Autowired` on fields.
-- **Immutability**: All DTOs must use `@Builder` and have no public setters. Use Java records for response-only DTOs where no validation is needed.
-- **Transactions**: `@Transactional` lives on service implementations, never on controllers or repositories.
-- **Exception handling**: Throw domain-specific unchecked exceptions from services; catch and map them exclusively in `GlobalExceptionHandler`.
-- **Password encoding**: Always use `BCryptPasswordEncoder` (strength 12). Plaintext passwords must never be logged or stored.
-- **OTP lifecycle**: OTPs are 6-digit numeric codes, stored in Redis with a 10-minute TTL, deleted immediately after successful verification.
-- **JWT denylist**: On logout, store the token JTI in Redis with TTL equal to the token's remaining validity.
-- **Soft delete**: Deletion sets `UserStatus = DELETED` and anonymises PII fields; no hard deletes.
+- **Layered architecture**: web → service → repository. Services must not call controllers. Repositories must not contain business logic.
+- **DTOs never leak into the service layer.** Services accept and return domain objects or primitives. Controllers perform DTO ↔ domain conversion via MapStruct mappers.
+- **Soft deletes only.** Set `UserStatus.DELETED` and `deletedAt` timestamp; never issue `DELETE` SQL for user rows.
+- **OTP flow:** Generate a 6-digit numeric OTP → store in Redis with key `otp:{userId}` and TTL of 5 minutes → verify and delete atomically using a Lua script or `GETDEL`.
+- **JWT:** Use RS256 (asymmetric). Private key signs tokens; public key validates. Load keys from `classpath:keys/` via `JwtConfig`. Access token TTL: 15 minutes. Refresh token is out of scope.
+- **RabbitMQ exchanges:** Use a topic exchange named `user.events`. Routing keys: `user.registered`, `user.deleted`.
+- **Passwords:** Hash with `BCryptPasswordEncoder` (strength 12). Never log or return passwords.
+- **Validation:** Use Bean Validation (`@Valid`, `@NotBlank`, `@Email`, `@Size`) on all request DTOs. Validate at the controller boundary only.
+- **Error responses:** All errors return `ApiErrorResponse` with fields: `timestamp`, `status`, `error`, `message`, `path`.
+- **Logging:** Use SLF4J + Logback. Log at `INFO` for service operations, `WARN` for business rule violations, `ERROR` for unexpected exceptions. Never log PII (email, password, OTP value).
 
-### Style
-- Max method length: 30 lines. Extract helpers if exceeded.
-- Max class length: 250 lines. Split responsibilities if exceeded.
-- All public methods on service interfaces must have Javadoc.
-- No `System.out.println`; use SLF4J `@Slf4j` only.
-- Validate all inbound DTOs with `@Valid` + Bean Validation 3.x annotations; add custom `@Constraint` validators where standard annotations are insufficient.
+### Spring Security
+- Disable CSRF (stateless JWT API).
+- Permit: `POST /auth/register`, `POST /auth/login`, `POST /auth/verify`, `GET /actuator/health`, `GET /v3/api-docs/**`, `GET /swagger-ui/**`.
+- Require authentication for all other endpoints.
+- Add `JwtAuthenticationFilter` before `UsernamePasswordAuthenticationFilter`.
 
 ---
 
 ## 5. Testing
 
 ### Unit Tests (`src/test/java/.../unit/`)
-- Framework: **JUnit 5** + **Mockito** (no Spring context loaded).
+- Framework: JUnit 5 + Mockito.
 - Annotate with `@ExtendWith(MockitoExtension.class)`.
-- Mock all collaborators; test one class in isolation.
-- Cover: happy path, all exception branches, edge cases (null inputs, boundary values).
-- `JwtTokenProviderTest` must test: valid token, expired token, tampered signature, denylisted JTI.
-- `OtpServiceImplTest` must test: OTP generation range, Redis TTL set correctly, successful verification, expired OTP, wrong OTP.
+- Mock all collaborators. No Spring context loaded.
+- Every service method must have tests covering: happy path, each validation branch, each exception path.
+- Controller slice tests use `@WebMvcTest` + `@MockBean` for service dependencies. Test HTTP status codes, response body shape, and validation rejection (400) for invalid inputs.
+- Use `UserFixture` to build consistent test data. No magic literals in tests — use named constants.
 
 ### Integration Tests (`src/test/java/.../integration/`)
+- Extend `BaseIntegrationTest` which starts Testcontainers for PostgreSQL, Redis, and RabbitMQ.
 - Annotate with `@SpringBootTest(webEnvironment = RANDOM_PORT)`.
-- Extend `BaseIntegrationTest` which starts Testcontainers singletons:
-  - `PostgreSQLContainer` (image: `postgres:16-alpine`)
-  - `GenericContainer` for Redis (`redis:7-alpine`)
-  - `RabbitMQContainer` (image: `rabbitmq:3-management-alpine`)
-- Use `@AutoConfigureMockMvc` + `MockMvc` for HTTP-layer tests.
-- Each IT class must reset database state with `@Sql` scripts or `@Transactional` rollback.
-- Test full flows: register → verify OTP → login → get profile → delete account.
-
-### Coverage
-```xml
-<!-- pom.xml JaCoCo configuration -->
-<configuration>
-  <rules>
-    <rule>
-      <element>BUNDLE</element>
-      <limits>
-        <limit>
-          <counter>LINE</counter>
-          <value>COVEREDRATIO</value>
-          
+- Use `@ActiveProfiles("test")` and `application-test.yml` for config overrides.
+- Use `TestRestTemplate` or `WebTestClient` for HTTP calls.
+- Each

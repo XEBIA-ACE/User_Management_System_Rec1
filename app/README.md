@@ -1,190 +1,289 @@
 # User Management Service
 
-A production-ready microservice for user lifecycle management, built with **Spring Boot 3** following **hexagonal architecture** (ports and adapters).
+A production-ready **User Management Service** built with **Spring Boot 3** following **Hexagonal Architecture** (Ports & Adapters). It provides user registration with OTP verification, JWT-based authentication, and event-driven messaging via RabbitMQ, with Redis for token caching.
 
-## Responsibilities
+---
 
-| Feature | Description |
-|---|---|
-| **Registration** | Create a new user account; triggers OTP email via RabbitMQ |
-| **Authentication** | Validate credentials and issue a signed JWT |
-| **Account Verification** | Activate an account using a 6-digit OTP code |
-| **Account Deletion** | Soft-delete a user account (status → `DELETED`) |
+## Architecture Overview
+
+This service follows the **Hexagonal Architecture** (also known as Ports & Adapters) pattern, which cleanly separates the domain logic from infrastructure concerns.
+
+```
+com.usermanagement
+  ├── domain                  ← Pure business logic, no framework dependencies
+  │   ├── model               ← Domain entities: User, OtpToken
+  │   ├── port
+  │   │   ├── in              ← Inbound use-case interfaces (driving ports)
+  │   │   └── out             ← Outbound interfaces: repos, messaging, cache (driven ports)
+  │   └── service             ← Domain services implementing in-ports
+  ├── application
+  │   └── dto                 ← Request/Response DTOs
+  ├── adapter
+  │   ├── in
+  │   │   └── web             ← REST controllers (driving adapters)
+  │   └── out
+  │       ├── persistence     ← JPA entities, Spring Data repos, adapters (driven)
+  │       ├── messaging       ← RabbitMQ event publisher (driven)
+  │       └── cache           ← Redis token cache adapter (driven)
+  └── infrastructure
+      ├── config              ← Spring Security, JWT, RabbitMQ configuration
+      └── exception           ← Global exception handler
+```
+
+### Key Principles
+- **Domain layer** has zero Spring/framework dependencies — only plain Java.
+- **Ports** define contracts; **Adapters** implement them.
+- **Dependency inversion**: domain depends on port interfaces, not on concrete adapters.
+- Infrastructure wires everything together via Spring's DI.
 
 ---
 
 ## Technology Stack
 
-| Component | Technology |
-|---|---|
-| Framework | Spring Boot 3.2 |
-| Security | Spring Security + JWT (jjwt 0.12) |
-| Persistence | PostgreSQL + Spring Data JPA + Flyway |
-| Cache | Redis (Spring Data Redis) |
-| Messaging | RabbitMQ (Spring AMQP) |
-| Build | Maven 3 |
-| Runtime | Java 21 |
+| Technology          | Version   | Purpose                          |
+|---------------------|-----------|----------------------------------|
+| Java                | 17        | Language                         |
+| Spring Boot         | 3.2.x     | Application framework            |
+| Spring Security     | 6.x       | Authentication & authorization   |
+| JJWT                | 0.11.5    | JWT token generation/validation  |
+| Spring Data JPA     | 3.x       | ORM / persistence                |
+| PostgreSQL          | 15        | Primary relational database      |
+| Flyway              | bundled   | Database schema migrations       |
+| Spring Data Redis   | 3.x       | Token caching                    |
+| Spring AMQP         | 3.x       | RabbitMQ messaging               |
+| Maven               | 3.x       | Build tool                       |
 
 ---
 
-## Architecture
+## Prerequisites
 
-```
-src/main/java/com/usermanagement/
-├── domain/
-│   ├── model/          # Pure domain entities (User, OtpToken, UserStatus)
-│   ├── port/
-│   │   ├── in/         # Inbound ports (use-case interfaces)
-│   │   └── out/        # Outbound ports (repository / messaging interfaces)
-│   └── service/        # Domain services implementing inbound ports
-├── infrastructure/
-│   ├── persistence/    # JPA entities, repositories, adapters, mappers
-│   ├── security/       # JWT adapter, filter, Spring Security config
-│   └── messaging/      # RabbitMQ adapter and config
-└── adapter/
-    └── in/
-        └── web/        # REST controllers, DTOs, exception handler
-```
+- **Java 17+**
+- **Maven 3.8+**
+- **Docker & Docker Compose** (for running infrastructure)
+- **PostgreSQL 15** (or use Docker)
+- **Redis 7** (or use Docker)
+- **RabbitMQ 3.12** (or use Docker)
 
 ---
 
 ## Getting Started
 
-### Prerequisites
+### Option 1: Full Docker Compose (Recommended)
 
-- Java 21+
-- Docker & Docker Compose
-
-### Run with Docker Compose
+Spin up the entire stack (app + all infrastructure) with a single command:
 
 ```bash
-# 1. Copy environment variables
+# Clone / navigate to project root
+cd /app
+
+# Copy environment file
 cp .env.example .env
 
-# 2. Edit .env with your secrets
-#    (at minimum, change JWT_SECRET and DB_PASSWORD)
+# Build and start all services
+docker-compose up --build
+```
 
-# 3. Start infrastructure
-docker compose up -d postgres redis rabbitmq
+The service will be available at `http://localhost:8080`.
 
-# 4. Run the service
+RabbitMQ Management UI: `http://localhost:15672` (guest/guest)
+
+### Option 2: Local Development (Infrastructure via Docker)
+
+Start only the infrastructure services:
+
+```bash
+docker-compose up postgres redis rabbitmq -d
+```
+
+Then run the Spring Boot application:
+
+```bash
 ./mvnw spring-boot:run
 ```
 
-### Run with Docker
+Or build and run the JAR:
 
 ```bash
-docker build -t user-management-service:latest .
-docker run -p 8080:8080 --env-file .env user-management-service:latest
+./mvnw clean package -DskipTests
+java -jar target/user-management-service-1.0.0.jar
 ```
 
 ---
 
-## API Reference
+## API Endpoints
 
-### Health Check
+| Method   | Endpoint                    | Auth Required | Description                          |
+|----------|-----------------------------|---------------|--------------------------------------|
+| `GET`    | `/api/v1/health`            | No            | Service health check                 |
+| `POST`   | `/api/v1/users/register`    | No            | Register a new user                  |
+| `POST`   | `/api/v1/users/login`       | No            | Authenticate and receive JWT token   |
+| `POST`   | `/api/v1/users/verify`      | No            | Verify account with OTP              |
+| `DELETE` | `/api/v1/users/{userId}`    | Yes (JWT)     | Delete a user account                |
+| `GET`    | `/actuator/health`          | No            | Spring Actuator health endpoint      |
 
-```
-GET /actuator/health
-```
+### Request / Response Examples
 
-### Authentication
+#### Register User
+```http
+POST /api/v1/users/register
+Content-Type: application/json
 
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/auth/register` | None | Register a new user |
-| `POST` | `/api/v1/auth/login` | None | Authenticate and receive JWT |
-| `POST` | `/api/v1/auth/verify` | None | Verify account with OTP |
-
-### User Management
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `DELETE` | `/api/v1/users/me` | Bearer JWT | Soft-delete own account |
-
-#### Register
-
-```json
-POST /api/v1/auth/register
 {
-  "email": "alice@example.com",
-  "password": "securePassword123",
-  "firstName": "Alice",
-  "lastName": "Smith"
+  "email": "john.doe@example.com",
+  "password": "securePass123",
+  "fullName": "John Doe"
+}
+```
+```json
+HTTP 201 Created
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "john.doe@example.com",
+  "fullName": "John Doe",
+  "verified": false,
+  "createdAt": "2024-01-15T10:30:00"
 }
 ```
 
 #### Login
+```http
+POST /api/v1/users/login
+Content-Type: application/json
 
-```json
-POST /api/v1/auth/login
 {
-  "email": "alice@example.com",
-  "password": "securePassword123"
+  "email": "john.doe@example.com",
+  "password": "securePass123"
+}
+```
+```json
+HTTP 200 OK
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+  "tokenType": "Bearer"
 }
 ```
 
-Response:
-```json
-{ "accessToken": "<jwt>" }
-```
+#### Verify OTP
+```http
+POST /api/v1/users/verify
+Content-Type: application/json
 
-#### Verify Account
-
-```json
-POST /api/v1/auth/verify
 {
   "userId": "550e8400-e29b-41d4-a716-446655440000",
-  "otpCode": "123456"
+  "otp": "123456"
 }
+```
+```
+HTTP 204 No Content
+```
+
+#### Delete User
+```http
+DELETE /api/v1/users/550e8400-e29b-41d4-a716-446655440000
+Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+```
+```
+HTTP 204 No Content
 ```
 
 ---
 
-## Configuration
+## Environment Variables
 
-All configuration is driven by environment variables. See [`.env.example`](.env.example) for the full list.
+| Variable             | Default                                          | Description                          |
+|----------------------|--------------------------------------------------|--------------------------------------|
+| `SERVER_PORT`        | `8080`                                           | HTTP server port                     |
+| `DB_URL`             | `jdbc:postgresql://localhost:5432/userdb`        | PostgreSQL JDBC URL                  |
+| `DB_USERNAME`        | `postgres`                                       | Database username                    |
+| `DB_PASSWORD`        | `postgres`                                       | Database password                    |
+| `REDIS_HOST`         | `localhost`                                      | Redis hostname                       |
+| `REDIS_PORT`         | `6379`                                           | Redis port                           |
+| `REDIS_PASSWORD`     | *(empty)*                                        | Redis password (optional)            |
+| `RABBITMQ_HOST`      | `localhost`                                      | RabbitMQ hostname                    |
+| `RABBITMQ_PORT`      | `5672`                                           | RabbitMQ AMQP port                   |
+| `RABBITMQ_USERNAME`  | `guest`                                          | RabbitMQ username                    |
+| `RABBITMQ_PASSWORD`  | `guest`                                          | RabbitMQ password                    |
+| `JWT_SECRET`         | `changeme-super-secret-key-at-least-256-bits-long` | JWT signing secret (min 256-bit)   |
+| `JWT_EXPIRATION_MS`  | `86400000`                                       | JWT expiry in milliseconds (24h)     |
 
-| Variable | Default | Description |
-|---|---|---|
-| `SERVER_PORT` | `8080` | HTTP port |
-| `DB_URL` | `jdbc:postgresql://localhost:5432/user_management` | JDBC URL |
-| `DB_USERNAME` | `postgres` | DB username |
-| `DB_PASSWORD` | `postgres` | DB password |
-| `REDIS_HOST` | `localhost` | Redis host |
-| `REDIS_PORT` | `6379` | Redis port |
-| `RABBITMQ_HOST` | `localhost` | RabbitMQ host |
-| `JWT_SECRET` | *(must set)* | HS256 signing key (≥32 chars) |
-| `JWT_EXPIRATION_MS` | `3600000` | Token TTL in milliseconds |
+> **Security Note**: Always override `JWT_SECRET` with a strong, randomly generated secret in production.
 
 ---
 
 ## Running Tests
 
 ```bash
-# Unit tests only (no infrastructure required)
+# Run all tests
 ./mvnw test
 
-# Full test suite
+# Run tests with coverage report
 ./mvnw verify
+
+# Run a specific test class
+./mvnw test -Dtest=UserRegistrationServiceTest
 ```
 
----
-
-## Database Migrations
-
-Flyway migrations are located in `src/main/resources/db/migration/`:
-
-| Version | Description |
-|---|---|
-| `V1` | Create `users` table |
-| `V2` | Create `otp_tokens` table |
+Tests use the `test` Spring profile (`application-test.yml`) which configures:
+- **H2 in-memory database** (no PostgreSQL needed)
+- **Flyway disabled** (schema created by Hibernate)
+- Mocked Redis and RabbitMQ connections
 
 ---
 
-## Security Notes
+## RabbitMQ Events
 
-- Passwords are hashed with **BCrypt** (cost factor 10).
-- JWTs are signed with **HMAC-SHA256**; the secret must be ≥ 32 characters.
-- All endpoints except registration, login, verification, and health check require a valid Bearer token.
-- Sessions are **stateless** — no server-side session storage.
+The service publishes the following events to the `user.exchange` topic exchange:
+
+| Routing Key       | Queue                    | Payload                          | Trigger                  |
+|-------------------|--------------------------|----------------------------------|--------------------------|
+| `user.registered` | `user.registered.queue`  | `{ "email": "...", "otp": "..." }` | New user registration  |
+| `user.deleted`    | `user.deleted.queue`     | `{ "email": "..." }`             | User account deletion    |
+
+---
+
+## Database Schema
+
+Managed by **Flyway** migrations located in `src/main/resources/db/migration/`.
+
+| Migration                        | Description                          |
+|----------------------------------|--------------------------------------|
+| `V1__create_users_table.sql`     | Creates `users` and `otp_tokens` tables |
+
+---
+
+## Project Structure
+
+```
+/app
+├── src/
+│   ├── main/
+│   │   ├── java/com/usermanagement/
+│   │   │   ├── UserManagementApplication.java
+│   │   │   ├── domain/
+│   │   │   │   ├── model/          (User, OtpToken)
+│   │   │   │   ├── port/in/        (use-case interfaces)
+│   │   │   │   ├── port/out/       (repository/messaging interfaces)
+│   │   │   │   └── service/        (domain service implementations)
+│   │   │   ├── application/
+│   │   │   │   └── dto/            (request/response DTOs)
+│   │   │   ├── adapter/
+│   │   │   │   ├── in/web/         (REST controllers)
+│   │   │   │   └── out/
+│   │   │   │       ├── persistence/ (JPA entities, adapters)
+│   │   │   │       ├── messaging/   (RabbitMQ adapter)
+│   │   │   │       └── cache/       (Redis adapter)
+│   │   │   └── infrastructure/
+│   │   │       ├── config/          (Security, JWT, RabbitMQ configs)
+│   │   │       └── exception/       (Global exception handler)
+│   │   └── resources/
+│   │       ├── application.yml
+│   │       ├── application-test.yml
+│   │       └── db/migration/
+│   └── test/
+│       └── java/com/usermanagement/
+├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
+├── .env.example
+└── pom.xml
+```

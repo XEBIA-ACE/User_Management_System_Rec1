@@ -1,46 +1,49 @@
 package com.usermanagement.domain.service;
 
+import com.usermanagement.application.dto.VerifyOtpRequest;
 import com.usermanagement.domain.model.OtpToken;
 import com.usermanagement.domain.model.User;
-import com.usermanagement.domain.model.UserStatus;
 import com.usermanagement.domain.port.in.VerifyAccountUseCase;
 import com.usermanagement.domain.port.out.OtpRepository;
 import com.usermanagement.domain.port.out.UserRepository;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 
 @Service
-@RequiredArgsConstructor
 public class AccountVerificationService implements VerifyAccountUseCase {
 
     private final UserRepository userRepository;
     private final OtpRepository otpRepository;
 
+    public AccountVerificationService(UserRepository userRepository, OtpRepository otpRepository) {
+        this.userRepository = userRepository;
+        this.otpRepository = otpRepository;
+    }
+
     @Override
     @Transactional
-    public void verify(VerifyAccountCommand command) {
-        User user = userRepository.findById(command.userId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + command.userId()));
+    public void verify(VerifyOtpRequest request) {
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-        OtpToken token = otpRepository.findByUserIdAndCode(command.userId(), command.otpCode())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid OTP code"));
+        OtpToken otpToken = otpRepository.findByUserIdAndToken(request.getUserId(), request.getOtp())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid OTP"));
 
-        if (token.isUsed()) {
-            throw new IllegalStateException("OTP code has already been used");
+        if (otpToken.isUsed()) {
+            throw new IllegalArgumentException("OTP already used");
         }
 
-        if (token.getExpiresAt().isBefore(Instant.now())) {
-            throw new IllegalStateException("OTP code has expired");
+        if (otpToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new IllegalArgumentException("OTP expired");
         }
 
-        token.setUsed(true);
-        otpRepository.save(token);
+        otpToken.setUsed(true);
+        otpRepository.save(otpToken);
 
-        user.setStatus(UserStatus.ACTIVE);
-        user.setUpdatedAt(Instant.now());
+        user.setVerified(true);
+        user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
     }
 }

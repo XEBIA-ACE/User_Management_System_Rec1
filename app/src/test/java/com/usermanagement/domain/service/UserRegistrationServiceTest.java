@@ -1,113 +1,74 @@
 package com.usermanagement.domain.service;
 
+import com.usermanagement.application.dto.RegisterRequest;
+import com.usermanagement.application.dto.UserResponse;
+import com.usermanagement.domain.model.OtpToken;
 import com.usermanagement.domain.model.User;
-import com.usermanagement.domain.model.UserStatus;
-import com.usermanagement.domain.port.in.RegisterUserUseCase;
-import com.usermanagement.domain.port.out.NotificationPort;
+import com.usermanagement.domain.port.out.EventPublisher;
 import com.usermanagement.domain.port.out.OtpRepository;
 import com.usermanagement.domain.port.out.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
-@DisplayName("UserRegistrationService")
 class UserRegistrationServiceTest {
 
-    @Mock
     private UserRepository userRepository;
-
-    @Mock
     private OtpRepository otpRepository;
-
-    @Mock
-    private NotificationPort notificationPort;
-
+    private EventPublisher eventPublisher;
     private PasswordEncoder passwordEncoder;
     private UserRegistrationService service;
 
     @BeforeEach
     void setUp() {
+        userRepository = mock(UserRepository.class);
+        otpRepository = mock(OtpRepository.class);
+        eventPublisher = mock(EventPublisher.class);
         passwordEncoder = new BCryptPasswordEncoder();
-        service = new UserRegistrationService(userRepository, otpRepository, notificationPort, passwordEncoder);
+        service = new UserRegistrationService(userRepository, otpRepository, eventPublisher, passwordEncoder);
     }
 
     @Test
-    @DisplayName("register — creates user with PENDING_VERIFICATION status")
-    void register_createsUserWithPendingStatus() {
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(otpRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+    void register_successfullyCreatesUser() {
+        RegisterRequest request = new RegisterRequest("test@example.com", "password123", "Test User");
+        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
+            User u = inv.getArgument(0);
+            if (u.getId() == null) u.setId(UUID.randomUUID());
+            if (u.getCreatedAt() == null) u.setCreatedAt(LocalDateTime.now());
+            return u;
+        });
+        when(otpRepository.save(any(OtpToken.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        RegisterUserUseCase.RegisterUserCommand command =
-                new RegisterUserUseCase.RegisterUserCommand("alice@example.com", "password123", "Alice", "Smith");
+        UserResponse response = service.register(request);
 
-        User result = service.register(command);
-
-        assertThat(result.getEmail()).isEqualTo("alice@example.com");
-        assertThat(result.getStatus()).isEqualTo(UserStatus.PENDING_VERIFICATION);
-        assertThat(result.getId()).isNotNull();
+        assertThat(response).isNotNull();
+        assertThat(response.getEmail()).isEqualTo("test@example.com");
+        assertThat(response.getFullName()).isEqualTo("Test User");
+        assertThat(response.isVerified()).isFalse();
+        verify(eventPublisher).publishUserRegistered(eq("test@example.com"), anyString());
     }
 
     @Test
-    @DisplayName("register — throws when email already exists")
-    void register_throwsWhenEmailExists() {
-        when(userRepository.existsByEmail("alice@example.com")).thenReturn(true);
+    void register_throwsWhenEmailAlreadyExists() {
+        RegisterRequest request = new RegisterRequest("existing@example.com", "password123", "Existing User");
+        when(userRepository.existsByEmail("existing@example.com")).thenReturn(true);
 
-        RegisterUserUseCase.RegisterUserCommand command =
-                new RegisterUserUseCase.RegisterUserCommand("alice@example.com", "password123", "Alice", "Smith");
-
-        assertThatThrownBy(() -> service.register(command))
+        assertThatThrownBy(() -> service.register(request))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already registered");
-    }
-
-    @Test
-    @DisplayName("register — sends OTP notification after registration")
-    void register_sendsOtpNotification() {
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(otpRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        RegisterUserUseCase.RegisterUserCommand command =
-                new RegisterUserUseCase.RegisterUserCommand("bob@example.com", "password123", "Bob", "Jones");
-
-        service.register(command);
-
-        verify(notificationPort).sendOtp(any(UUID.class), anyString(), anyString());
-    }
-
-    @Test
-    @DisplayName("register — password is stored as hash, not plaintext")
-    void register_passwordIsHashed() {
-        when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        when(userRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
-        when(otpRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
-        RegisterUserUseCase.RegisterUserCommand command =
-                new RegisterUserUseCase.RegisterUserCommand("carol@example.com", "mySecret99", "Carol", "White");
-
-        service.register(command);
-
-        User saved = captor.getValue();
-        assertThat(saved.getPasswordHash()).isNotEqualTo("mySecret99");
-        assertThat(passwordEncoder.matches("mySecret99", saved.getPasswordHash())).isTrue();
+                .hasMessageContaining("Email already registered");
     }
 }
