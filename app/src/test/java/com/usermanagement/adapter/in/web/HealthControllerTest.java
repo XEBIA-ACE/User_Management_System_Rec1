@@ -1,34 +1,33 @@
 package com.usermanagement.adapter.in.web;
 
-import com.usermanagement.infrastructure.config.JwtAuthFilter;
-import com.usermanagement.infrastructure.config.JwtService;
-import com.usermanagement.infrastructure.config.SecurityConfig;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(HealthController.class)
-@Import({SecurityConfig.class, JwtAuthFilter.class})
+/**
+ * Integration test for the health-check endpoint.
+ * Uses MockMvc so no real infrastructure is required.
+ */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
 class HealthControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
-    private JwtService jwtService;
-
     @Test
-    void healthEndpoint_returnsUp() throws Exception {
-        mockMvc.perform(get("/api/v1/health"))
+    @DisplayName("GET /actuator/health returns 200 with status UP")
+    void healthEndpoint_returns200WithStatusUp() throws Exception {
+        mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.service").value("user-management-service"));
+                .andExpect(jsonPath("$.status").value("UP"));
     }
 }

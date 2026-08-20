@@ -1,66 +1,66 @@
 package com.usermanagement.adapter.in.web;
 
-import com.usermanagement.application.dto.AuthRequest;
-import com.usermanagement.application.dto.AuthResponse;
-import com.usermanagement.application.dto.RegisterRequest;
-import com.usermanagement.application.dto.UserResponse;
-import com.usermanagement.application.dto.VerifyOtpRequest;
-import com.usermanagement.domain.port.in.AuthenticateUserUseCase;
-import com.usermanagement.domain.port.in.DeleteUserUseCase;
-import com.usermanagement.domain.port.in.RegisterUserUseCase;
-import com.usermanagement.domain.port.in.VerifyAccountUseCase;
+import com.usermanagement.adapter.in.web.dto.AuthRequest;
+import com.usermanagement.adapter.in.web.dto.AuthResponse;
+import com.usermanagement.adapter.in.web.dto.RegisterRequest;
+import com.usermanagement.adapter.in.web.dto.RegisterResponse;
+import com.usermanagement.adapter.in.web.dto.VerifyOtpRequest;
+import com.usermanagement.application.port.in.AuthenticateUserUseCase;
+import com.usermanagement.application.port.in.DeleteUserUseCase;
+import com.usermanagement.application.port.in.RegisterUserUseCase;
+import com.usermanagement.application.port.in.VerifyOtpUseCase;
+import com.usermanagement.application.port.in.command.AuthenticateUserCommand;
+import com.usermanagement.application.port.in.command.RegisterUserCommand;
+import com.usermanagement.application.port.in.command.VerifyOtpCommand;
+import com.usermanagement.domain.model.User;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/users")
+@RequiredArgsConstructor
 public class UserController {
 
     private final RegisterUserUseCase registerUserUseCase;
     private final AuthenticateUserUseCase authenticateUserUseCase;
-    private final VerifyAccountUseCase verifyAccountUseCase;
+    private final VerifyOtpUseCase verifyOtpUseCase;
     private final DeleteUserUseCase deleteUserUseCase;
 
-    public UserController(RegisterUserUseCase registerUserUseCase,
-                          AuthenticateUserUseCase authenticateUserUseCase,
-                          VerifyAccountUseCase verifyAccountUseCase,
-                          DeleteUserUseCase deleteUserUseCase) {
-        this.registerUserUseCase = registerUserUseCase;
-        this.authenticateUserUseCase = authenticateUserUseCase;
-        this.verifyAccountUseCase = verifyAccountUseCase;
-        this.deleteUserUseCase = deleteUserUseCase;
-    }
-
     @PostMapping("/register")
-    public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
-        UserResponse response = registerUserUseCase.register(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest request) {
+        RegisterUserCommand command = new RegisterUserCommand(
+                request.email(),
+                request.password(),
+                request.firstName(),
+                request.lastName()
+        );
+        User user = registerUserUseCase.register(command);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(new RegisterResponse(user.getId().toString(), user.getEmail()));
     }
 
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody AuthRequest request) {
-        AuthResponse response = authenticateUserUseCase.authenticate(request);
-        return ResponseEntity.ok(response);
+    @PostMapping("/auth")
+    public ResponseEntity<AuthResponse> authenticate(@Valid @RequestBody AuthRequest request) {
+        String token = authenticateUserUseCase.authenticate(
+                new AuthenticateUserCommand(request.email(), request.password())
+        );
+        return ResponseEntity.ok(new AuthResponse(token));
     }
 
-    @PostMapping("/verify")
-    public ResponseEntity<Void> verify(@Valid @RequestBody VerifyOtpRequest request) {
-        verifyAccountUseCase.verify(request);
+    @PostMapping("/verify-otp")
+    public ResponseEntity<Void> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        verifyOtpUseCase.verify(new VerifyOtpCommand(request.email(), request.otp()));
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{userId}")
     public ResponseEntity<Void> deleteUser(@PathVariable UUID userId) {
-        deleteUserUseCase.deleteUser(userId);
+        deleteUserUseCase.delete(userId);
         return ResponseEntity.noContent().build();
     }
 }
