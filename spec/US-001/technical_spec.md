@@ -1,75 +1,94 @@
 ## S-001
 
-### Technical Design Specification for User Registration in User Management Service
+### Contracts & Interfaces
 
-#### Contracts & Interfaces
+1. **API Contract for User Registration**:
+   - **Endpoint**: `POST /api/v1/users/register`
+   - **Request Body Schema**:
+     - `email` (String, required): Valid email address
+     - `name` (String, required): User's name
+     - `password` (String, required): Raw password to be hashed
+   - **Response Codes**:
+     - `201 Created`: User successfully registered, OTP sent
+     - `400 Bad Request`: Validation errors, including duplicate email and format issues
+     - **Error Messages**:
+       - `email_duplicate`: Email already exists
+       - `email_format_error`: Invalid email format
+       - `password_strength_error`: Password does not meet strength requirements
+       - `name_missing`: Name field is missing
 
-1. **API Changes**
-   - **Endpoint Addition**: 
-     - **POST /api/v1/users/register**
-       - Request Payload: `{"email": "string", "name": "string", "password": "string"}`
-       - Response: `201 Created` on success, `409 Conflict` if email exists, `400 Bad Request` for invalid input.
-   - **Endpoint Usage**:
-     - **POST /api/v1/users/verify**
-       - To be called after registration with payload `{"email": "string", "otpCode": "string"}`.
-       - Response: `200 OK` on successful verification, `400 Bad Request` for invalid OTP.
+2. **Database Schema**:
+   - **Table**: `users`
+     - `id` (UUID, primary key)
+     - `email` (VARCHAR, unique, indexed)
+     - `name` (VARCHAR)
+     - `password_hash` (VARCHAR)
 
-2. **Data Model Changes**
-   - **User Table**
-     - Columns: 
-       - `email VARCHAR(255) PRIMARY KEY`
-       - `name VARCHAR(255)`
-       - `password VARCHAR(255)` (hashed)
-     - Indexes: 
-       - UNIQUE index on `email`
-   - **OTP Table**
-     - Columns:
-       - `otpCode VARCHAR(6)`
-       - `email VARCHAR(255) FOREIGN KEY REFERENCES Users(email)`
-       - `validUntil DATETIME`
+### Test Strategy
 
-#### Test Strategy
+1. **Validation Tests**:
+   - **Test**: Verify duplicate email error
+     - Ensures error response for existing email is `400 Bad Request` with `email_duplicate`
+   - **Test**: Validate email format
+     - Submits invalid email; expects `400 Bad Request` with `email_format_error`
+   - **Test**: Validate password strength
+     - Ensures weak passwords result in `password_strength_error`
+   - **Test**: Missing name field
+     - Validates missing name returns `name_missing`
 
-1. **API Contract Tests**
-   - **Test Case 1**: Verify `POST /api/v1/users/register` returns `201 Created` for valid, unique email.
-   - **Test Case 2**: Verify `POST /api/v1/users/register` returns `409 Conflict` for duplicate email.
-   - **Test Case 3**: Verify `POST /api/v1/users/register` returns `400 Bad Request` for non-compliant email format.
-   - **Test Case 4**: Confirm `POST /api/v1/users/verify` accepts correct OTP and returns successful verification.
+2. **Registration Success Tests**:
+   - **Test**: Successful registration
+     - Confirm database entry, password hashing, and OTP dispatch
+    
+**Testing Framework**: `JUnit` for unit and integration tests, `Mockito` for service mocking, and `Spring Boot Test` for end-to-end validation.
 
-2. **Security Compliance Tests**
-   - **Test Case 5**: Verify password storage uses a secure hashing algorithm.
-   - **Test Case 6**: Ensure OTP is generated, valid for the expected duration, and linked with the correct email.
+### Implementation Approach
 
-#### Implementation Approach
+1. **Core Logic**:
+   - **Controller**: `UserRegistrationController`
+     - Handles `POST /api/v1/users/register`
+     - Method: `registerUser(UserRegistrationDto dto)`: delegates to `RegistrationApplicationService`
+   - **Service**: `RegistrationApplicationService`
+     - **Method**: `register(UserRegistrationDto dto)`
+       - Validate email (FR-001), name, and password (FR-002)
+       - Hash password using a secure method (e.g., BCrypt) (FR-004)
+       - Persist user in the `users` table
+       - Trigger email OTP service (FR-005)
 
-1. **Core Implementation Logic**
-   - **RegistrationController** (`POST /register`)
-     - Method `registerUser(RequestBody registrationDto)` SHALL check for existing email using `UserRepository.findByEmail(String email)`.
-     - If email is unique, create user and hash password using `PasswordHasher.hash(String password)` and save via `UserRepository.save(User user)`.
-     - Call `OtpService.generateOtp(String email)` to send OTP, return `201 Created`.
+2. **Password Hashing**:
+   - **Algorithm**: BCryptPasswordEncoder (Spring Security)
 
-2. **Inter-service Calls and Async Patterns**
-   - **OTP Service Call (External Call)**
-     - Used for OTP generation. Implement an async retry mechanism accessing `OtpService.generateOtp()` three times on failure using `RetryTemplate`.
+3. **Email OTP Integration**:
+   - **Service**: `EmailNotificationService`
+     - **Method**: `sendOtp(String email)`: sends OTP to provided email
 
-3. **Architectural Decision Records (ADRs)**
-   - **ADR-001: Secure Password Hashing**
-     - Decision to use BCrypt for password hashing to satisfy SC-003.
-   - **ADR-002: Unique Email Constraint with Database Index**
-     - Provides assurance against duplicate email registration per FR-003.
+4. **Inter-Service Communication**:
+   - **Email Service** interaction via Spring `RestTemplate` to call external OTP dispatch API
 
-#### Simplicity Gate Assessment
+### Architectural Decision Records (ADRs)
 
-- **Appropriate**: Each technical element directly maps to the functional requirements:
-  - Registration Controller serves FR-001, FR-004.
-  - OTP Service integration serves FR-002.
-  - Password hashing mechanism ensures FR-005.
+- **ADR-001**: Use Spring Boot framework
+  - **Context**: Matches existing system architecture
+  - **Decision**: Continue using Spring Boot with JPA
+  - **Rationale**: Familiarity and support for needed features (REST, security, validation)
+  - **Alternatives**: Other frameworks discarded due to non-compatibility
 
-#### Affected Services and API Changes
+- **ADR-002**: Password Hashing with BCrypt
+  - **Context**: Secure storage of passwords
+  - **Decision**: Use BCrypt for hashing
+  - **Rationale**: Industry standard, good security-to-complexity ratio
+  - **Alternatives**: Other hashing methods not considered as secure
 
-- **Affected Service**: User Management Service (S-001)
-- **API Changes**:
-  - Addition of `POST /api/v1/users/register` endpoint.
-  - Clarification and test requirements for existing `POST /api/v1/users/verify` endpoint to handle email verification.
+### Simplicity Gate Assessment
 
-This technical specification adequately covers the functional requirements, ensuring separation of concerns with existing components and external services managing specific processing and validation logic.
+- **Assessment**: Appropriate
+  - All implemented technical elements directly map to specified functional requirements.
+  - No over-engineered components present.
+
+### Affected Services and API Changes
+
+- **Service**: User Management Service
+- **API Changes**: Introduction of a new endpoint `POST /api/v1/users/register`
+  - Affects email service via OTP integration
+
+This technical design adheres to the user registration criteria within the defined context and technological stack guidelines.

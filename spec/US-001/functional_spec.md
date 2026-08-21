@@ -1,78 +1,58 @@
 ## S-001
 
 ### Purpose
-
-The purpose of this specification is to define the functional requirements for the user registration process within the User Management Service, ensuring accurate account creation and secure handling of user credentials.
+This specification details the functionality required for user registration, enabling new users to create an account in the User Management Service.
 
 ### Scope
-
-This specification covers the registration capability of the User Management Service, specifically detailing requirements for account creation, email verification via OTP, and secure password storage.
+This specification covers the User Management Service's user registration capabilities, including data validation, account creation, and email-based OTP notification.
 
 ### Non-Goals
-
-1. Password reset functionality.
-2. User profile updates post-registration.
-3. Multi-factor authentication beyond OTP.
-4. User deletion or deactivation.
-5. Login and session management.
-6. Third-party service integration.
-7. Notification sending mechanisms beyond OTP.
-8. Detailed UI/UX design specifications.
-9. Performance optimization.
-10. Support for non-email registration methods.
+1. User login process
+2. Account deletion
+3. Health check or metrics endpoints
+4. Password recovery
+5. User authentication after registration
 
 ### Key Entities
-
-- **User**: 
-  - email: string
-  - name: string
-  - password: string (hashed)
-- **OTP**:
-  - otpCode: string
-  - validUntil: datetime
-
+- **User**
+  - `email` (String)
+  - `name` (String)
+  - `password` (String, hashed)
+  
 ### Functional Requirements
 
-- FR-001: User Management Service SHALL allow registration with a unique email, valid name, and password.
-- FR-002: User Management Service MUST send an OTP to the user's email upon successful registration.
-- FR-003: User Management Service MUST NOT register a user with an already registered email.
-- FR-004: User Management Service MUST provide an error message if registration fails due to an existing email.
-- FR-005: User Management Service SHALL ensure the password is stored securely in a hashed format.
+- **FR-001**: User Management Service MUST validate that the email entered by the user is unique.
+- **FR-002**: User Management Service MUST validate the entered name and password for format compliance.
+- **FR-003**: User Management Service SHALL register the user when all input data is valid and unique.
+- **FR-004**: User Management Service MUST hash the password securely before storing it.
+- **FR-005**: User Management Service SHALL send an OTP to the user's email upon successful registration.
+- **FR-006**: User Management Service MUST provide an error message when a duplicate email is detected.
 
-### Assumptions
-
-- A-001: Registration requires email, name, and password (Assumed: Required fields verification).
-- A-002: OTP is the only method of email verification.
-
+### Assumptions Propagation
+- **A-001**: Users have valid access to their email ([FR-003], [FR-005]).
+  
 ### Success Criteria
-
-- SC-001: Registration attempts with a unique email are greater than 95% successful.
-- SC-002: 100% of successfully registered emails receive an OTP.
-- SC-003: At least 99% of passwords are stored in a securely hashed format.
+- **SC-001**: Registration request processed with a unique email equals 100%
+- **SC-002**: Error message for duplicate email delivered at least 95%
+- **SC-003**: OTP sent for successful user registrations at least 95%
 
 ### Priority Levels
-
-- P1: Successful registration with unique email and successful email OTP dispatch.
-- P2: Error handling for duplicate email registration.
-- P2: Secure password storage verification.
+- **P1**: Successful user registration with email confirmation ([FR-003], [FR-005])
+- **P2**: Duplicate email validation ([FR-006])
+- **P2**: Password hashing compliance ([FR-004])
 
 ### Edge Cases
 
-- EC-001: Given an offline user's email server, When OTP is sent, Then it should be retried thrice before failure.
-- EC-002: Given a non-compliant email format, When attempting registration, Then the system must reject the request with a message.
-- EC-003: Given a password below acceptable strength criteria, When submitted, Then registration must be denied with feedback.
+- **EC-001**: Given a weak password, When user registers, Then registration MUST be denied with a password strength error.
+- **EC-002**: Given an email with incorrect format, When user registers, Then registration MUST be denied with a format error.
+- **EC-003**: Given a missing name field, When user registers, Then registration MUST be denied due to incomplete profile.
 
 ### Independent Testability
-
-To verify the functional requirements:
-1. Preconditions:
-   - Registration page is accessible.
-   - Test email is available.
-2. User Action:
-   - Submit new user registration with a valid, unique email, valid name, and strong password.
-3. Observable Outcome:
-   - User receives an OTP email and registration succeeds.
+- **Preconditions**: User registration page is accessible, form fields are present
+- **User Action**: Submit registration form with all fields completed
+- **Observable Outcome**: User receives OTP or an error message without dependencies
 
 ### Separation of Concerns
-
-This specification focuses on user registration capabilities, ensuring functionality for account creation, business rules for input validation, and feedback on errors. External systems involved include the OTP service for verification, without discussing underlying technical implementations.
+- The specification defines what the User Management Service must do for user registration but does not describe the technical methods used to achieve these outcomes.
+- Error conditions are described in terms of user notification and internal process adherence without revealing internal state representations.
+- Logical role names are used for external system interaction, not specific product identities.
