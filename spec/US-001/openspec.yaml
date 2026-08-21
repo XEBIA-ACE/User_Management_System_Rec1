@@ -1,0 +1,127 @@
+openspec: '1.0'
+story:
+  id: US-001
+  title: User Registration
+  description: As a new user, I want to register with my email and password so that
+    I can create an account and receive notifications.
+  feature:
+    id: F-01
+    title: User Registration
+  epic:
+    id: EP-001
+    title: User Onboarding and Registration Flow
+  status: draft
+functional_requirement:
+  description: "## S-001\n\n### Purpose\nThis specification details the functionality\
+    \ required for user registration, enabling new users to create an account in the\
+    \ User Management Service.\n\n### Scope\nThis specification covers the User Management\
+    \ Service's user registration capabilities, including data validation, account\
+    \ creation, and email-based OTP notification.\n\n### Non-Goals\n1. User login\
+    \ process\n2. Account deletion\n3. Health check or metrics endpoints\n4. Password\
+    \ recovery\n5. User authentication after registration\n\n### Key Entities\n- **User**\n\
+    \  - `email` (String)\n  - `name` (String)\n  - `password` (String, hashed)\n\
+    \  \n### Functional Requirements\n\n- **FR-001**: User Management Service MUST\
+    \ validate that the email entered by the user is unique.\n- **FR-002**: User Management\
+    \ Service MUST validate the entered name and password for format compliance.\n\
+    - **FR-003**: User Management Service SHALL register the user when all input data\
+    \ is valid and unique.\n- **FR-004**: User Management Service MUST hash the password\
+    \ securely before storing it.\n- **FR-005**: User Management Service SHALL send\
+    \ an OTP to the user's email upon successful registration.\n- **FR-006**: User\
+    \ Management Service MUST provide an error message when a duplicate email is detected.\n\
+    \n### Assumptions Propagation\n- **A-001**: Users have valid access to their email\
+    \ ([FR-003], [FR-005]).\n  \n### Success Criteria\n- **SC-001**: Registration\
+    \ request processed with a unique email equals 100%\n- **SC-002**: Error message\
+    \ for duplicate email delivered at least 95%\n- **SC-003**: OTP sent for successful\
+    \ user registrations at least 95%\n\n### Priority Levels\n- **P1**: Successful\
+    \ user registration with email confirmation ([FR-003], [FR-005])\n- **P2**: Duplicate\
+    \ email validation ([FR-006])\n- **P2**: Password hashing compliance ([FR-004])\n\
+    \n### Edge Cases\n\n- **EC-001**: Given a weak password, When user registers,\
+    \ Then registration MUST be denied with a password strength error.\n- **EC-002**:\
+    \ Given an email with incorrect format, When user registers, Then registration\
+    \ MUST be denied with a format error.\n- **EC-003**: Given a missing name field,\
+    \ When user registers, Then registration MUST be denied due to incomplete profile.\n\
+    \n### Independent Testability\n- **Preconditions**: User registration page is\
+    \ accessible, form fields are present\n- **User Action**: Submit registration\
+    \ form with all fields completed\n- **Observable Outcome**: User receives OTP\
+    \ or an error message without dependencies\n\n### Separation of Concerns\n- The\
+    \ specification defines what the User Management Service must do for user registration\
+    \ but does not describe the technical methods used to achieve these outcomes.\n\
+    - Error conditions are described in terms of user notification and internal process\
+    \ adherence without revealing internal state representations.\n- Logical role\
+    \ names are used for external system interaction, not specific product identities."
+  acceptance_criteria:
+  - given_when_then: Given the registration page is accessible, When a user enters
+      a unique email, valid name, and password, Then the system registers the account
+      and sends an OTP to the email.
+  - given_when_then: Given a user enters an already registered email, When they attempt
+      to register, Then the system denies registration and shows an appropriate error
+      message.
+  - given_when_then: Given a user registers successfully, When the registration is
+      complete, Then the password must be stored securely in a hashed format.
+  epic_acceptance_criteria:
+  - given_when_then: Given a new user, when registering, then an OTP is sent to the
+      user's email.
+  - given_when_then: Given a valid OTP, when entered, then the user's account is activated.
+  - given_when_then: Given an unverified user, when attempted to log in, then access
+      is denied.
+  - given_when_then: Given a user, when account deletion is confirmed, then the account
+      is permanently removed.
+  - given_when_then: All communication should be encrypted using HTTPS.
+technical_design:
+  description: "## S-001\n\n### Contracts & Interfaces\n\n1. **API Contract for User\
+    \ Registration**:\n   - **Endpoint**: `POST /api/v1/users/register`\n   - **Request\
+    \ Body Schema**:\n     - `email` (String, required): Valid email address\n   \
+    \  - `name` (String, required): User's name\n     - `password` (String, required):\
+    \ Raw password to be hashed\n   - **Response Codes**:\n     - `201 Created`: User\
+    \ successfully registered, OTP sent\n     - `400 Bad Request`: Validation errors,\
+    \ including duplicate email and format issues\n     - **Error Messages**:\n  \
+    \     - `email_duplicate`: Email already exists\n       - `email_format_error`:\
+    \ Invalid email format\n       - `password_strength_error`: Password does not\
+    \ meet strength requirements\n       - `name_missing`: Name field is missing\n\
+    \n2. **Database Schema**:\n   - **Table**: `users`\n     - `id` (UUID, primary\
+    \ key)\n     - `email` (VARCHAR, unique, indexed)\n     - `name` (VARCHAR)\n \
+    \    - `password_hash` (VARCHAR)\n\n### Test Strategy\n\n1. **Validation Tests**:\n\
+    \   - **Test**: Verify duplicate email error\n     - Ensures error response for\
+    \ existing email is `400 Bad Request` with `email_duplicate`\n   - **Test**: Validate\
+    \ email format\n     - Submits invalid email; expects `400 Bad Request` with `email_format_error`\n\
+    \   - **Test**: Validate password strength\n     - Ensures weak passwords result\
+    \ in `password_strength_error`\n   - **Test**: Missing name field\n     - Validates\
+    \ missing name returns `name_missing`\n\n2. **Registration Success Tests**:\n\
+    \   - **Test**: Successful registration\n     - Confirm database entry, password\
+    \ hashing, and OTP dispatch\n    \n**Testing Framework**: `JUnit` for unit and\
+    \ integration tests, `Mockito` for service mocking, and `Spring Boot Test` for\
+    \ end-to-end validation.\n\n### Implementation Approach\n\n1. **Core Logic**:\n\
+    \   - **Controller**: `UserRegistrationController`\n     - Handles `POST /api/v1/users/register`\n\
+    \     - Method: `registerUser(UserRegistrationDto dto)`: delegates to `RegistrationApplicationService`\n\
+    \   - **Service**: `RegistrationApplicationService`\n     - **Method**: `register(UserRegistrationDto\
+    \ dto)`\n       - Validate email (FR-001), name, and password (FR-002)\n     \
+    \  - Hash password using a secure method (e.g., BCrypt) (FR-004)\n       - Persist\
+    \ user in the `users` table\n       - Trigger email OTP service (FR-005)\n\n2.\
+    \ **Password Hashing**:\n   - **Algorithm**: BCryptPasswordEncoder (Spring Security)\n\
+    \n3. **Email OTP Integration**:\n   - **Service**: `EmailNotificationService`\n\
+    \     - **Method**: `sendOtp(String email)`: sends OTP to provided email\n\n4.\
+    \ **Inter-Service Communication**:\n   - **Email Service** interaction via Spring\
+    \ `RestTemplate` to call external OTP dispatch API\n\n### Architectural Decision\
+    \ Records (ADRs)\n\n- **ADR-001**: Use Spring Boot framework\n  - **Context**:\
+    \ Matches existing system architecture\n  - **Decision**: Continue using Spring\
+    \ Boot with JPA\n  - **Rationale**: Familiarity and support for needed features\
+    \ (REST, security, validation)\n  - **Alternatives**: Other frameworks discarded\
+    \ due to non-compatibility\n\n- **ADR-002**: Password Hashing with BCrypt\n  -\
+    \ **Context**: Secure storage of passwords\n  - **Decision**: Use BCrypt for hashing\n\
+    \  - **Rationale**: Industry standard, good security-to-complexity ratio\n  -\
+    \ **Alternatives**: Other hashing methods not considered as secure\n\n### Simplicity\
+    \ Gate Assessment\n\n- **Assessment**: Appropriate\n  - All implemented technical\
+    \ elements directly map to specified functional requirements.\n  - No over-engineered\
+    \ components present.\n\n### Affected Services and API Changes\n\n- **Service**:\
+    \ User Management Service\n- **API Changes**: Introduction of a new endpoint `POST\
+    \ /api/v1/users/register`\n  - Affects email service via OTP integration\n\nThis\
+    \ technical design adheres to the user registration criteria within the defined\
+    \ context and technological stack guidelines."
+  affected_services:
+  - id: S-001
+  api_changes:
+  - service: S-001
+    endpoint: /api/v1/users/register
+    method: POST
+    change_type: modification
+gaps: []
