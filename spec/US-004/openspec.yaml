@@ -1,0 +1,130 @@
+openspec: '1.0'
+story:
+  id: US-004
+  title: Account Deletion
+  description: As a user, I want to permanently delete my account so that I can remove
+    my personal data from the platform.
+  feature:
+    id: F-01
+    title: User Registration
+  epic:
+    id: EP-001
+    title: User Onboarding and Registration Flow
+  status: draft
+functional_requirement:
+  description: "## S-001\n\n### Purpose\nThis specification describes the functional\
+    \ requirements for enabling account deletion by users in the User Management Service,\
+    \ ensuring personal data is permanently removed from the platform.\n\n### Scope\n\
+    The specification covers the deletion of user accounts, including confirmation,\
+    \ data removal, and ensuring no access post-deletion within the User Management\
+    \ Service.\n\n### Non-Goals\n1. User data backup or export process\n2. Temporarily\
+    \ deactivating accounts\n3. Notification to third parties about account deletion\n\
+    4. Recovery of deleted accounts\n5. Notification to friends or connections of\
+    \ a deleted user\n6. Deletion of non-user-generated content\n7. Impact analysis\
+    \ on aggregated data\n8. Modification of external authentication systems\n9. Handling\
+    \ legal requests for data retention\n10. Integration with analytics tools\n\n\
+    ### Key Entities\n- **UserAccount**: \n  - **Attributes**: \n    - `userId` (string),\
+    \ \n    - `username` (string), \n    - `email` (string), \n    - `data` (object)\n\
+    \  - **Relationships**: None\n\n### Functional Requirements\n- FR-001: User Management\
+    \ Service MUST prompt for confirmation when a user initiates account deletion.\n\
+    - FR-002: User Management Service MUST delete all associated data permanently\
+    \ upon receiving confirmation.\n- FR-003: User Management Service MUST deny any\
+    \ login attempts with a deleted account and inform users their account no longer\
+    \ exists.\n- FR-004: User Management Service SHOULD validate that a user is logged\
+    \ in successfully before allowing account deletion.\n- FR-005: User Management\
+    \ Service MAY log account deletion events for audit purposes.\n\n### Assumptions\
+    \ Propagation\n- A-001: The system assumes users are uniquely identified by `userId`.\
+    \ (FR-002)\n- A-002: Deletion is irreversible and user-confirmed. (FR-001, FR-002)\n\
+    \n### Success Criteria\n- SC-001: Account deletion requests result in all user\
+    \ data being irrecoverable in at least 99% of cases.\n- SC-002: Users are denied\
+    \ login with sufficient feedback in 100% of post-deletion attempts.\n\n### Priority\
+    \ Levels\n- P1: Account deletion prompt and data removal (FR-001, FR-002)\n- P2:\
+    \ Denial of login post-deletion (FR-003)\n- P3: Log account deletion events (FR-005)\n\
+    \n### Edge Cases\n- EC-001: Given a user who aborted initial deletion, When they\
+    \ retry, Then they must be prompted for confirmation again.\n- EC-002: Given a\
+    \ user initiates deletion without login, When they attempt to delete, Then the\
+    \ system must block the action.\n- EC-003: Given network failure during deletion,\
+    \ When the user retries, Then previous states must not affect new deletion attempts.\n\
+    \n### Independent Testability\n- Preconditions: User is logged in; account deletion\
+    \ is initiated.\n- User Action: Confirm deletion.\n- Outcome: User account and\
+    \ data are irrevocably deleted. \n\n### Separation of Concerns\nThe description\
+    \ outlines expected functionalities and constraints. Implementation details such\
+    \ as API paths, response formats, or specific protocol behaviors are intentionally\
+    \ omitted, focusing solely on user-facing capabilities and functional outcomes.\
+    \ External systems such as backup services or third-party integrators are represented\
+    \ abstractly."
+  acceptance_criteria:
+  - given_when_then: Given the user logs in successfully, When the user initiates
+      account deletion, Then the system asks for confirmation.
+  - given_when_then: Given confirmation is granted, When the deletion process is initiated,
+      Then the system permanently removes all associated data.
+  - given_when_then: Given a user tries to log in after deletion, When they attempt
+      access, Then the system denies login and informs the account no longer exists.
+  epic_acceptance_criteria:
+  - given_when_then: Given a new user, when registering, then an OTP is sent to the
+      user's email.
+  - given_when_then: Given a valid OTP, when entered, then the user's account is activated.
+  - given_when_then: Given an unverified user, when attempted to log in, then access
+      is denied.
+  - given_when_then: Given a user, when account deletion is confirmed, then the account
+      is permanently removed.
+  - given_when_then: All communication should be encrypted using HTTPS.
+technical_design:
+  description: "## S-001\n\n### Technical Design Specification\n\n#### Contracts &\
+    \ Interfaces\n\n1. **API Contracts**:\n   - **Delete User Endpoint**: \n     -\
+    \ **Method**: DELETE\n     - **Path**: `/api/v1/users/{userId}`\n     - **Request**:\
+    \ No body required. Requires user authentication.\n     - **Responses**:\n   \
+    \    - `204 No Content`: Successful deletion.\n       - `401 Unauthorized`: User\
+    \ not authenticated.\n       - `403 Forbidden`: User not authorized.\n       -\
+    \ `404 Not Found`: User account does not exist.\n\n2. **Data Schema Changes**:\n\
+    \   - **UserAccount Table**: \n     - `userId` (Primary Key, String)\n     - `username`\
+    \ (String)\n     - `email` (String)\n     - `data` (JSON) \n     - An existing\
+    \ field indicating deletion status SHALL be leveraged for post-deletion checks.\n\
+    \   - **AuditLog Table** (New): \n     - `logId` (Primary Key, Auto Increment)\n\
+    \     - `userId` (String, Foreign Key)\n     - `timestamp` (Timestamp)\n     -\
+    \ `action` (String, Enum: 'DELETION')\n\n#### Test Strategy\n\n1. **Contract Validation\
+    \ Tests** (JUnit/Mockito):\n   - **Successful Deletion**: Verify `204 No Content`\
+    \ response when a valid account is deleted.\n   - **Unauthorized Deletion**: Ensure\
+    \ `401 Unauthorized` if user authentication fails.\n   - **Post-Deletion Login\
+    \ Denial**: After deletion, trigger login attempt and assert `403 Forbidden`.\n\
+    \n2. **Integration Tests**:\n   - **Data Irreversibility**: Assert that data entries\
+    \ for a user in `UserAccount` are irrecoverable post-deletion.\n   - **Audit Logging**:\
+    \ Validate entry creation in `AuditLog` table on successful account deletion.\n\
+    \   - **Edge Cases** (using Mockito to simulate failures):\n     - Test network\
+    \ failure resilience during deletion.\n\n#### Implementation Approach\n\n1. **Core\
+    \ Logic**:\n   - **AccountDeletionService** (Java Spring Boot):\n     - `deleteUserAccount(String\
+    \ userId)`: Validates authorization, deletes user data from `UserAccount`, logs\
+    \ action in `AuditLog`.\n     - `denyPostDeletionAccess(String userId)`: Checks\
+    \ deletion status during authentication and denies access if applicable.\n   \n\
+    2. **Inter-Service Calls**:\n   - No direct inter-service calls specified. Any\
+    \ dependencies (e.g., notification) are outside the scope, ensuring separation\
+    \ of concerns.\n\n3. **Asynchronous Patterns**:\n   - Use Spring’s asynchronous\
+    \ capabilities to log audit information (`AuditLogService`) independently after\
+    \ user data removal to reduce latency impact on the delete operation.\n\n####\
+    \ Architectural Decision Records (ADRs)\n\n- **ADR-001: Use Spring Boot for Account\
+    \ Deletion Implementation**\n  - **Context**: Consistency with the existing tech\
+    \ stack (Spring Boot).\n  - **Decision**: Maintain Spring Boot for user management\
+    \ operations.\n  - **Rationale**: Leverages existing infrastructure and team expertise;\
+    \ simplifies integration and code reuse.\n  - **Alternative**: Custom Java implementation\
+    \ without Spring, rejected due to increased complexity and maintenance overhead.\n\
+    \n- **ADR-002: Introduction of `AuditLog` Table for Tracking Deletions**\n  -\
+    \ **Context**: FR-005 requires logging of deletion events for audit purposes.\n\
+    \  - **Decision**: Introduce a dedicated `AuditLog` table.\n  - **Rationale**:\
+    \ Provides structured log management, isolation from user data.\n  - **Alternative**:\
+    \ Log deletions in existing log files, rejected for lack of structured queryability.\n\
+    \n#### Simplicity Gate Assessment\n\n- **Rating**: `appropriate`\n  - All proposed\
+    \ technical elements map directly to specified functional requirements, ensuring\
+    \ coverage and alignment.\n\n#### Affected Services and API Changes\n\n- **Service**:\
+    \ User Management Service\n- **API Changes**: Expansion of the DELETE `/api/v1/users/{userId}`\
+    \ endpoint to incorporate new response codes and post-deletion access checks.\n\
+    \nThis technical specification ensures that all functional requirements are adequately\
+    \ supported, with focus on core implementation using current technologies and\
+    \ methodologies pertinent to the existing system architecture."
+  affected_services:
+  - id: S-001
+  api_changes:
+  - service: S-001
+    endpoint: /api/v1/users/{userId}
+    method: DELETE
+    change_type: modify
+gaps: []
